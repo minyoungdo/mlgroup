@@ -1,7 +1,9 @@
 # mlgroup
 Machine Learning Final Project
 
-2. Group Presentation (20%): During the final week (two class periods) at the end of the quarter, teams will present their final projects to the class. Though I do not have a specific set of guidelines for what your presentation should include, good presentations typically include some combination of the following:
+### Group Presentation (20%)
+
+During the final week (two class periods) at the end of the quarter, teams will present their final projects to the class. Though I do not have a specific set of guidelines for what your presentation should include, good presentations typically include some combination of the following:
 • Introduce the topic to a general audience with a motivating anecdote, paradox, or example
 • Summarize your process, workflow, and your main approach or method
 • Highlight the key findings
@@ -17,7 +19,7 @@ point-getter wins the respective award. Only 1 winner is allowed for each catego
 the winner gets a 5% bonus (half a letter-grade) on the final project report, which can be > 100%.
 
 
-Final Report (35%):
+### Final Report (35%)
 The final project report is the distillation of your group’s efforts over the course of the quarter. Only one report should be submitted by your group, with each person’s name on the report. It should be around 12-15 pages double spaced, excluding references (but you can have an Appendix of any length you like). Note that all code should be placed in the Appendix, different than the problem sets. Code must be submitted for reproducibility.
 The final report should contain some combination (if not all) of the following sections:
 • Title Page & Contribution Statement (listing all group members and their roles in the project; note that by including your name on the project, you agree that you contributed equally to the project)
