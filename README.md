@@ -1,5 +1,4 @@
-# mlgroup
-Machine Learning Final Project
+# Machine Learning Final Project
 
 ### Group Presentation (20%)
 
