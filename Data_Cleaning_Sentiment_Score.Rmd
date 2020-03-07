@@ -338,7 +338,7 @@ polarity_score <- function(df) {
     unnest %>% 
     get_sentences() %>%
     # get sentiment score for each tweet
-    sentiment(polarity_dt = lexicon::hash_sentiment_jockers_rinker) %>% 
+    sentiment(polarity_dt = lexicon::hash_sentiment_sentiword) %>% 
     mutate(characters = nchar(stripWhitespace(text))) %>% 
     filter(characters > 1)
     # same number of obs, hence no error
@@ -362,7 +362,7 @@ skim(amy_polar$sentiment)
 polarity_plot <- function(df){
   ggplot(df, aes(sentiment)) +
     geom_density(aes(fill = "Density", alpha = 0.1)) +
-    scale_y_continuous(limits = c(0, 5)) +
+    scale_y_continuous(limits = c(0, 11)) +
     scale_x_continuous(limits = c(-1.5, 1.5)) +
     theme_minimal(base_size = 9) +
     geom_vline(aes(xintercept = mean(sentiment), color = "Mean"))
