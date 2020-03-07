@@ -1,18 +1,31 @@
 ---
 title: "Data Cleaning & Sentiment Score"
 author: "Minyoung Do"
-date: "3/5/2020"
-output: html_document
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  pdf_document:
+    keep_tex: true
+    fig_caption: true
+    latex_engine: xelatex
+geometry: margin = 0.1in
+fontfamily: mathpazo
+fontsize: 11pt
+endnote: no
 ---
 
-```{r setup, include=FALSE}
+```{r include = FALSE}
 knitr::opts_chunk$set(echo = T, cache = T, warning = F, message = F, error = F)
 library(tidyverse)
 library(tidytext)
+library(caret)
 library(sentimentr)
 library(lubridate)
 library(tm)
 library(skimr)
+library(stringr)
+library(ggpubr)
+library(ggsci)
+library(wordcloud)
 ```
 
 ## Data Prep
@@ -131,10 +144,90 @@ bernie_text_duplicates <- subset(grouped_bernie_text, grouped_bernie_text$TweetC
 
 # finding any tweet that contains 4 words below as it's likely to be a meaningless tweet
 # check Tweetcount for how many times they appear in the dataset
-duplicates_bernie <- bernie_text_duplicates[grep("stock|retweet|follow|update", bernie_text_duplicates$Text),]
+duplicates_bernie <- bernie_text_duplicates[grep("stock|retweet|follow|update", bernie_text_duplicates$Text), ]
 ```
 
 Still looking for a way to remove the duplicates in the data in an efficient manner.
+
+## Term Frequency
+
+```{r}
+clean_frequency <- function(df){
+  term_freq_df <- df %>%
+                   unnest_tokens(output = word, input = text) %>%
+                   anti_join(stop_words) %>%
+                   count(word, sort = TRUE) %>%
+                   arrange(desc(n)) %>%
+                   drop_na()
+  term_freq_df %>%
+  top_n(20) %>%
+    ggplot(aes(x = reorder(word, -n), y = n, fill = word)) + 
+      geom_bar(stat = "identity") +
+      scale_x_reordered() +
+    labs(x = NULL,
+         y = "Word count") +
+    coord_flip() +
+    theme_minimal(base_size = rcfss::base_size * .65) +
+    theme(legend.position = "none")
+}
+
+clean_frequency(bernie_clean) +
+  labs(title = "Word Frequency",
+       subtitle = "Tweets Containing Bernie Sanders",
+       x = NULL,
+       y = "Word count")
+
+clean_frequency(warren_clean) +
+  labs(title = "Word Frequency",
+       subtitle = "Tweets Containing Elizabeth Warren",
+       x = NULL,
+       y = "Word count")
+
+clean_frequency(pete_clean) +
+  labs(title = "Word Frequency",
+       subtitle = "Tweets Containing Pete Buttigieg",
+       x = NULL,
+       y = "Word count")
+
+clean_frequency(bloomberg_clean) +
+  labs(title = "Word Frequency",
+       subtitle = "Tweets Containing Mike Bloomberg",
+       x = NULL,
+       y = "Word count")
+
+clean_frequency(amy_clean) +
+  labs(title = "Word Frequency",
+       subtitle = "Tweets Containing Amy Klobuchar",
+       x = NULL,
+       y = "Word count")
+
+```
+
+## Word Cloud
+
+```{r}
+set.seed(1234)
+
+wordcloud(words = bernie_clean$text, min.freq = 1,
+          max.words = 200, random.order = FALSE, rot.per= 0.35, 
+          colors = brewer.pal(8, "Pastel1"))
+
+wordcloud(words = warren_clean$text, min.freq = 1,
+          max.words = 200, random.order = FALSE, rot.per= 0.35, 
+          colors = brewer.pal(8, "Pastel2"))
+
+wordcloud(words = pete_clean$text, min.freq = 1,
+          max.words = 200, random.order = FALSE, rot.per= 0.35, 
+          colors = brewer.pal(8, "Set1"))
+
+wordcloud(words = bloomberg_clean$text, min.freq = 1,
+          max.words = 200, random.order = FALSE, rot.per= 0.35, 
+          colors = brewer.pal(8, "Set2"))
+
+wordcloud(words = amy_clean$text, min.freq = 1,
+          max.words = 200, random.order = FALSE, rot.per= 0.35, 
+          colors = brewer.pal(8, "Set3"))
+```
 
 ## Get sentiment scores
 
@@ -147,7 +240,7 @@ sentiment_score <- function(df) {
     # get sentiment score for each tweet
     sentiment() %>% 
     mutate(characters = nchar(stripWhitespace(text))) %>% 
-    filter(characters > 1 )
+    filter(characters > 1)
     # same number of obs, hence no error
 }
 
@@ -172,53 +265,188 @@ skim(amy_sent$sentiment)
 # function to plot the distribution of sentiment scores
 sentiment_plot <- function(df){
   ggplot(df, aes(sentiment)) +
-    geom_density() +
-    scale_y_continuous(limits = c(0,7.5)) +
+    geom_density(aes(fill = "Density", alpha = 0.1)) +
+    scale_y_continuous(limits = c(0, 5)) +
     scale_x_continuous(limits = c(-1.5, 1.5)) +
-    theme_minimal(base_size = 16) +
+    theme_minimal(base_size = 10) +
     geom_vline(aes(xintercept = mean(sentiment), color = "Mean"))
 }
 
 # customizing the labels
-sentiment_plot(bernie_sent) +
+bernie_plot <- sentiment_plot(bernie_sent) +
   labs(x = "Sentiment", 
        y = "Density", 
        title = "Bernie Sanders",
-       subtitle = "The Distribution of Sentiment Across R Package Help Docs") +
-  theme(plot.title = element_text(hjust = 0.5), 
+       subtitle = "The Distribution of Sentiment Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
         axis.text.y=element_blank())
 
-sentiment_plot(warren_sent) +
+bernie_plot
+
+warren_plot <- sentiment_plot(warren_sent) +
   labs(x = "Sentiment", 
        y = "Density", 
        title = "Elizabeth Warren",
-       subtitle = "The Distribution of Sentiment Across R Package Help Docs") +
-  theme(plot.title = element_text(hjust = 0.5), 
+       subtitle = "The Distribution of Sentiment Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
         axis.text.y=element_blank())
 
-sentiment_plot(pete_sent) +
+warren_plot
+
+pete_plot <- sentiment_plot(pete_sent) +
   labs(x = "Sentiment", 
        y = "Density", 
        title = "Pete Buttigieg",
-       subtitle = "The Distribution of Sentiment Across R Package Help Docs") +
-  theme(plot.title = element_text(hjust = 0.5), 
+       subtitle = "The Distribution of Sentiment Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
         axis.text.y=element_blank())
 
-sentiment_plot(bloomberg_sent) +
+pete_plot
+
+bloomberg_plot <- sentiment_plot(bloomberg_sent) +
   labs(x = "Sentiment", 
        y = "Density", 
        title = "Mike Bloomberg",
-       subtitle = "The Distribution of Sentiment Across R Package Help Docs") +
-  theme(plot.title = element_text(hjust = 0.5), 
+       subtitle = "The Distribution of Sentiment Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
         axis.text.y=element_blank())
 
-sentiment_plot(amy_sent) +
+bloomberg_plot
+
+amy_plot <- sentiment_plot(amy_sent) +
   labs(x = "Sentiment", 
        y = "Density", 
        title = "Amy Klobuchar",
-       subtitle = "The Distribution of Sentiment Across R Package Help Docs") +
-  theme(plot.title = element_text(hjust = 0.5), 
+       subtitle = "The Distribution of Sentiment Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
         axis.text.y=element_blank())
+
+amy_plot
 ```
+
+## Polarity score: weighted sentiment scores
+
+```{r}
+# function to calculate the sentiment score
+polarity_score <- function(df) {
+  df %>%
+    unnest %>% 
+    get_sentences() %>%
+    # get sentiment score for each tweet
+    sentiment(polarity_dt = lexicon::hash_sentiment_jockers_rinker) %>% 
+    mutate(characters = nchar(stripWhitespace(text))) %>% 
+    filter(characters > 1)
+    # same number of obs, hence no error
+}
+
+# get sentiment scores for all our data frames
+bernie_polar <- polarity_score(bernie_clean)
+warren_polar <- polarity_score(warren_clean)
+pete_polar <- polarity_score(pete_clean)
+bloomberg_polar <- polarity_score(bloomberg_clean)
+amy_polar <- polarity_score(amy_clean)
+
+# quick summary of the result
+skim(bernie_polar$sentiment)
+skim(warren_polar$sentiment)
+skim(pete_polar$sentiment)
+skim(bloomberg_polar$sentiment)
+skim(amy_polar$sentiment)
+
+# function to plot the distribution of sentiment scores
+polarity_plot <- function(df){
+  ggplot(df, aes(sentiment)) +
+    geom_density(aes(fill = "Density", alpha = 0.1)) +
+    scale_y_continuous(limits = c(0, 5)) +
+    scale_x_continuous(limits = c(-1.5, 1.5)) +
+    theme_minimal(base_size = 9) +
+    geom_vline(aes(xintercept = mean(sentiment), color = "Mean"))
+}
+
+# customizing the labels
+bernie_plot_polar <- polarity_plot(bernie_polar) +
+  labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Bernie Sanders",
+       subtitle = "The Distribution of Polarity Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y=element_blank())
+
+bernie_plot_polar
+
+warren_plot_polar <- polarity_plot(warren_polar) +
+  labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Elizabeth Warren",
+       subtitle = "The Distribution of Polarity Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y=element_blank())
+
+warren_plot_polar
+
+pete_plot_polar <- polarity_plot(pete_polar) +
+  labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Pete Buttigieg",
+       subtitle = "The Distribution of Polarity Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y=element_blank())
+
+pete_plot_polar
+
+bloomberg_plot_polar <- polarity_plot(bloomberg_polar) +
+  labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Mike Bloomberg",
+       subtitle = "The Distribution of Polarity Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y=element_blank())
+
+bloomberg_plot_polar
+
+amy_plot_polar <- polarity_plot(amy_polar) +
+  labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Amy Klobuchar",
+       subtitle = "The Distribution of Polarity Scores") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text.y=element_blank())
+
+amy_plot_polar
+```
+
+```{r}
+ggarrange(bernie_plot_polar, warren_plot_polar, pete_plot_polar, bloomberg_plot_polar, amy_plot_polar, legend = F)
+
+
+```
+
+## Resampling and Bootstrapping
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
 
 
