@@ -1,0 +1,307 @@
+---
+title: "MACSS 33002 Final Report"
+author: "Audrey Glaser"
+date: "3/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, cache = T, warning = F, message = F, error = F)
+
+library(tidyverse)
+library(tidytext)
+library(sentimentr)
+library(lubridate)
+library(tm)
+library(skimr)
+library(ggpubr)
+library(Stack)
+library(car)
+library(grid)
+```
+
+## Data Prep
+
+## Read tweets from the files & Find the overlapping time frame
+
+```{r message = FALSE, warning=FALSE}
+# Read data from csv files
+setwd("~/Downloads/mlgroup-master")
+bernie_original <- read_csv("bernie_tweets.csv")
+warren_original <- read_csv("warren_tweets.csv")
+pete_original <- read_csv("buttigieg_tweets.csv")
+bloomberg_original <- read_csv("bloomberg_tweets.csv")
+amy_original <- read_csv("klobuchar_tweets.csv")
+biden_original <- read_csv("biden_tweets.csv")
+
+# Convert ID to character from numeric.
+bernie_original$user_id <- as.character(bernie_original$user_id)
+warren_original$user_id <- as.character(warren_original$user_id)
+pete_original$user_id <- as.character(pete_original$user_id)
+bloomberg_original$user_id <- as.character(bloomberg_original$user_id)
+amy_original$user_id <- as.character(amy_original$user_id)
+biden_original$user_id <- as.character(biden_original$user_id)
+
+# check the time frame of each data
+date_check <- function(df){
+  df %>%
+  group_by(1) %>%
+  summarise(max = max(created), min = min(created))
+}
+
+# apply tthe new function to each data frame
+bernie_date <- date_check(bernie_original)
+warren_date <- date_check(warren_original)
+pete_date <- date_check(pete_original)
+bloomberg_date <- date_check(bloomberg_original)
+amy_date <- date_check(amy_original)
+biden_date <- date_check(biden_original)
+
+# find overlapping time period
+date_frame <- bind_rows(bernie_date, warren_date, pete_date, bloomberg_date, amy_date, biden_date,.id = "id")[, -2]
+```
+
+## Preparing/cleaning the data
+
+The first step of data cleaning process entails removing:
+
+1. *url*s
+2. character strings between "<" and ">" to deal with smileys and other encoded text.
+3. retweet marks, @RT
+4. quotation marks and apostrophes
+5. any @userid
+6. punctuation and blank spaces
+7. stopwords and single letters
+
+```{r message = FALSE, warning=FALSE}
+clean_tweets <- function(df) {
+  # Remove URLs
+  df$text <- gsub("http[^[:space:]]*", "",df$text)
+  # Remove retweet entities 
+  df$text <- gsub("(RT|via)((?:\\b\\W*@\\w+)+)"," ", df$text)
+  # Remove quotes
+  df$text <- gsub("'s|'s|[...]", "", df$text)
+  # Remove at people 
+  df$text <- gsub("@\\w+", " ", df$text)
+  # Remove punctuation 
+  df$text <- gsub("[[:punct:]]", " ", df$text)
+  # Remove single letters.
+  df$text <- gsub(" *\\b[[:alpha:]]{1}\\b *", "", df$text)
+  # Remove unnecessary spaces
+  df$text <- gsub("[ \t]{2,}", " ", df$text)
+  # Remove leading and trailing whitespaces 
+  df$text <- gsub("^\\s+|\\s+$", "", df$text)
+  
+  ## parsing, tokenizing, and re-grouping text column
+  df <- df %>%
+    unnest_tokens(output = word, input = text) %>%
+    anti_join(stop_words) %>%
+    filter(!str_detect(word, "^[0-9]*$")) %>%
+    group_by(username, created) %>%
+    summarize(text = str_c(word, collapse = " ")) %>%
+    ungroup()
+    # creating a date column without time
+    df$date <- as.Date(df$created, "%Y-%m-%d")
+    # setting date objects
+    start <- as.Date("2020-01-02")
+    end <- as.Date("2020-02-26")
+    # subsetting by date range
+    df <- df %>%
+      subset(date >= start & date <= end) %>%
+      select(-created)
+}
+
+bernie_clean <- clean_tweets(bernie_original)
+warren_clean <- clean_tweets(warren_original)
+pete_clean <- clean_tweets(pete_original)
+bloomberg_clean <- clean_tweets(bloomberg_original)
+amy_clean <- clean_tweets(amy_original)
+biden_clean <- clean_tweets(biden_original)
+```
+
+## Get Jockers sentiment scores
+
+```{r}
+# Write function to calculate sentiment scores using Jocker's dictionary
+jockers_score <- function(df) {
+  df %>%
+    unnest %>% 
+    get_sentences() %>%
+    # get sentiment score for each tweet
+    sentiment() %>% 
+    mutate(characters = nchar(stripWhitespace(text))) %>% 
+    filter(characters > 1)
+    # same number of obs, hence no error
+}
+
+# Get sentiment scores for all our data frames
+bernie_jockers <- jockers_score(bernie_clean)
+warren_jockers <- jockers_score(warren_clean)
+pete_jockers <- jockers_score(pete_clean)
+bloomberg_jockers <- jockers_score(bloomberg_clean)
+amy_jockers <- jockers_score(amy_clean)
+biden_jockers <- jockers_score(biden_clean)
+
+# Add candidate label
+bernie_jockers <- bernie_jockers %>%
+  mutate("candidate" = "Sanders")
+warren_jockers <- warren_jockers %>%
+  mutate("candidate" = "Warren")
+pete_jockers <- pete_jockers %>%
+  mutate("candidate" = "Buttigieg")
+bloomberg_jockers <- bloomberg_jockers %>%
+  mutate("candidate" = "Bloomberg")
+amy_jockers <- amy_jockers %>%
+  mutate("candidate" = "Klobuchar")
+biden_jockers <- biden_jockers %>%
+  mutate("candidate" = "Biden")
+
+# Aggregate scores into one dataframe
+jockers <- Stack(bernie_jockers, warren_jockers)
+jockers <- Stack(jockers, pete_jockers)
+jockers <- Stack(jockers, bloomberg_jockers)
+jockers <- Stack(jockers, amy_jockers)
+jockers <- Stack(jockers, biden_jockers)
+```
+
+# Get SentiWordScore sentiment scores
+
+```{r}
+# Write function to calculate scores using SentiWordNet dictionary
+sentiwordnet_score <- function(df) {
+  df %>%
+    unnest %>% 
+    get_sentences() %>%
+    # get sentiment score for each tweet
+    sentiment(polarity_dt = lexicon::hash_sentiment_sentiword) %>% 
+    mutate(characters = nchar(stripWhitespace(text))) %>% 
+    filter(characters > 1)
+    # same number of obs, hence no error
+}
+
+# Get sentiment scores for all candidates
+bernie_sentiwordnet <- sentiwordnet_score(bernie_clean)
+warren_sentiwordnet <- sentiwordnet_score(warren_clean)
+pete_sentiwordnet <- sentiwordnet_score(pete_clean)
+bloomberg_sentiwordnet <- sentiwordnet_score(bloomberg_clean)
+amy_sentiwordnet <- sentiwordnet_score(amy_clean)
+biden_sentiwordnet <- sentiwordnet_score(biden_clean)
+
+#Stack SentiWordNet scores into one dataframe
+bernie_sentiwordnet <- bernie_sentiwordnet %>%
+  mutate("candidate" = "Sanders")
+warren_sentiwordnet <- warren_sentiwordnet %>%
+  mutate("candidate" = "Warren")
+pete_sentiwordnet <- pete_sentiwordnet %>%
+  mutate("candidate" = "Buttigieg")
+bloomberg_sentiwordnet <- bloomberg_sentiwordnet %>%
+  mutate("candidate" = "Bloomberg")
+amy_sentiwordnet <- amy_sentiwordnet %>%
+  mutate("candidate" = "Klobuchar")
+biden_sentiwordnet <- biden_sentiwordnet %>%
+  mutate("candidate" = "Biden")
+
+sentiwordnet <- Stack(bernie_sentiwordnet, warren_sentiwordnet)
+sentiwordnet <- Stack(sentiwordnet, pete_sentiwordnet)
+sentiwordnet <- Stack(sentiwordnet, bloomberg_sentiwordnet)
+sentiwordnet <- Stack(sentiwordnet, amy_sentiwordnet)
+sentiwordnet <- Stack(sentiwordnet, biden_sentiwordnet)
+```
+
+## One-way T tests, one-way ANOVA, Tukey HSD
+
+```{r}
+#Write table of Jockers scores summary stats
+jockers_sum <- group_by(jockers, candidate) %>%
+  summarise(
+    count = n(),
+    mean = mean(sentiment, na.rm = TRUE),
+    sd = sd(sentiment, na.rm = TRUE),
+    t.test_p = t.test(sentiment, mu = 0)$p.value
+  )
+
+jockers_sum
+
+#Write table of SentiWordNet scores summary stats
+sentiwordnet_sum <- group_by(sentiwordnet, candidate) %>%
+  summarise(
+    count = n(),
+    mean = mean(sentiment, na.rm = TRUE),
+    sd = sd(sentiment, na.rm = TRUE),
+    t.test_p = t.test(sentiment, mu = 0)$p.value
+  )
+
+sentiwordnet_sum
+
+# Jockers mean scores, one-way ANOVA
+jockers.aov <- aov(sentiment ~ candidate, data = jockers)
+summary(jockers.aov)
+
+# SentiWordNet score means, one-way ANOVA
+sentiwordnet.aov <- aov(sentiment ~ candidate, data = sentiwordnet)
+summary(sentiwordnet.aov)
+
+#Jockers mean scores, multiple pairwise comparison 
+TukeyHSD(jockers.aov)
+
+#SentiWordNet mean scores, multiple pairwise comparison 
+TukeyHSD(sentiwordnet.aov)
+
+#Diagnostic tests for Jockers score ANOVA
+plot(jockers.aov, 1)
+leveneTest(sentiment ~ candidate, data = jockers)
+
+#Diagnostic tests for SentiWordNet score ANOVA
+plot(sentiwordnet.aov, 1)
+leveneTest(sentiment ~ candidate, data = sentiwordnet)
+```
+
+## Plot Jockers score distributions
+
+```{r}
+# function to plot the distribution of Jocker's scores
+jockers_plot <- function(df){
+  ggplot(df, aes(sentiment)) +
+    geom_density() +
+    scale_y_continuous(limits = c(0,7.5)) +
+    scale_x_continuous(limits = c(-1.5, 1.5)) +
+    theme_minimal(base_size = 12) +
+    geom_vline(aes(xintercept = mean(sentiment), color = "Mean"))+
+    facet_wrap(~candidate, nrow = 2, scales = "free_x")+
+    labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Density Distribution of Jocker's Sentiment Scores")
+}
+
+#Create plot
+jplot <- jockers_plot(jockers) + theme(panel.spacing = unit(1.5, "lines"))
+
+#Write plot to image
+ggsave(filename="jockers_plots.jpg", plot=jplot)
+
+```
+
+## Plot SentiWordNet score distributions
+
+```{r}
+
+# Write function to plot distributions of SentiWordNet scores
+sentiwordnet_plot <- function(df){
+  ggplot(df, aes(sentiment)) +
+    geom_density() +
+    scale_y_continuous(limits = c(0, 5)) +
+    scale_x_continuous(limits = c(-1.5, 1.5)) +
+    theme_minimal(base_size = 12) +
+    geom_vline(aes(xintercept = mean(sentiment), color = "Mean"))+
+    facet_wrap(~candidate, nrow = 2, scales = "free_x")+
+    labs(x = "Sentiment", 
+       y = "Density", 
+       title = "Density Distribution of SentiWordNet Scores")
+}
+
+swnplot <- sentiwordnet_plot(sentiwordnet) + theme(panel.spacing = unit(1.5, "lines"))
+
+#Write plot to image
+ggsave(filename="sentiwordnet_plots.jpg", plot=swnplot)
+```
+
